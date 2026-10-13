@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel Financeiro</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--ink:#1f2a2e;--mute:#6b7780;--line:#e6e3dc;--in:#1f8a5b;--out:#c8503c;--accent:#2f5d8a}
+@media (prefers-color-scheme:dark){:root{--bg:#161a1c;--card:#20262a;--ink:#eceae4;--mute:#97a3ab;--line:#303940;--in:#4cc38a;--out:#ee7d68;--accent:#7fb0e0}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:900px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+h1{font-size:1.3rem;margin:0}
+.nav{display:flex;align-items:center;gap:8px}
+.nav button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;width:36px;height:36px;font-size:1rem;cursor:pointer}
+.nav select{height:36px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:0 10px;font-size:.95rem}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card small{color:var(--mute);display:block}
+.card b{font-size:1.45rem;font-variant-numeric:tabular-nums}
+.in{color:var(--in)}.out{color:var(--out)}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+h2{font-size:1rem;margin:0 0 12px}
+.row{display:grid;grid-template-columns:110px 1fr 90px;gap:10px;align-items:center;margin:8px 0;font-size:.92rem}
+.bar{height:10px;background:var(--line);border-radius:5px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--out);border-radius:5px}
+.row span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--mute);font-weight:500;font-size:.8rem}
+td.v{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tag{background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:1px 9px;font-size:.78rem;color:var(--mute)}
+.empty{color:var(--mute);text-align:center;padding:18px 0}
+.filters{display:flex;gap:6px;margin-bottom:10px}
+.filters button{border:1px solid var(--line);background:none;color:var(--mute);border-radius:20px;padding:3px 12px;cursor:pointer;font-size:.85rem}
+.filters button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+@media(max-width:560px){.cards{grid-template-columns:1fr}.row{grid-template-columns:90px 1fr 80px}.hide-s{display:none}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>💰 Painel Financeiro</h1>
+    <div class="nav"><button id="prev" aria-label="Mês anterior">‹</button><select id="mes"></select><button id="next" aria-label="Próximo mês">›</button></div>
+  </header>
+  <div class="cards">
+    <div class="card"><small>Entradas</small><b class="in" id="tin"></b></div>
+    <div class="card"><small>Saídas</small><b class="out" id="tout"></b></div>
+    <div class="card"><small>Saldo do mês</small><b id="tsaldo"></b></div>
+  </div>
+  <section><h2>Gastos por categoria</h2><div id="cats"></div></section>
+  <section>
+    <h2>Lançamentos</h2>
+    <div class="filters" id="filtros"></div>
+    <div id="lista"></div>
+  </section>
+</main>
+<script src="data/transacoes.js"></script>
+<script>
+const T = window.TRANSACOES || [];
+const brl = n => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nomeMes = k => { const [y,m]=k.split('-'); return new Date(y,m-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}).replace(/^./,c=>c.toUpperCase()); };
+const hoje = new Date(); const mesAtual = hoje.getFullYear()+'-'+String(hoje.getMonth()+1).padStart(2,'0');
+const meses = [...new Set([...T.map(t=>t.data.slice(0,7)), mesAtual])].sort();
+let mes = mesAtual, filtro = 'todos';
+
+$('mes').innerHTML = meses.map(m=>`<option value="${m}">${nomeMes(m)}</option>`).join('');
+function ir(m){ if(!meses.includes(m)) return; mes=m; $('mes').value=m; render(); }
+$('mes').onchange = e => ir(e.target.value);
+$('prev').onclick = () => ir(meses[meses.indexOf(mes)-1]);
+$('next').onclick = () => ir(meses[meses.indexOf(mes)+1]);
+
+function render(){
+  const doMes = T.filter(t=>t.data.startsWith(mes)).sort((a,b)=>b.data.localeCompare(a.data));
+  const soma = tipo => doMes.filter(t=>t.tipo===tipo).reduce((s,t)=>s+t.valor,0);
+  const ent = soma('entrada'), sai = soma('saida'), saldo = ent-sai;
+  $('tin').textContent = brl(ent); $('tout').textContent = brl(sai);
+  $('tsaldo').textContent = brl(saldo); $('tsaldo').className = saldo>=0?'in':'out';
+
+  const por = {};
+  doMes.filter(t=>t.tipo==='saida').forEach(t=>por[t.categoria]=(por[t.categoria]||0)+t.valor);
+  const cats = Object.entries(por).sort((a,b)=>b[1]-a[1]);
+  $('cats').innerHTML = cats.length ? cats.map(([c,v])=>
+    `<div class="row"><span>${esc(c)}</span><div class="bar"><i style="width:${v/cats[0][1]*100}%"></i></div><span>${brl(v)}</span></div>`).join('')
+    : '<div class="empty">Nenhum gasto neste mês.</div>';
+
+  $('filtros').innerHTML = ['todos','entrada','saida'].map(f=>
+    `<button class="${f===filtro?'on':''}" data-f="${f}">${{todos:'Todos',entrada:'Entradas',saida:'Saídas'}[f]}</button>`).join('');
+  $('filtros').querySelectorAll('button').forEach(b=>b.onclick=()=>{filtro=b.dataset.f;render();});
+
+  const vis = doMes.filter(t=>filtro==='todos'||t.tipo===filtro);
+  $('lista').innerHTML = vis.length ? `<table><thead><tr><th>Data</th><th>Descrição</th><th class="hide-s">Categoria</th><th class="hide-s">Quem</th><th style="text-align:right">Valor</th></tr></thead><tbody>`+
+    vis.map(t=>`<tr><td>${t.data.slice(8)}/${t.data.slice(5,7)}</td><td>${t.comprovante?`<a href="${esc(t.comprovante)}" target="_blank" style="color:inherit">${esc(t.descricao)}</a>`:esc(t.descricao)}</td><td class="hide-s"><span class="tag">${esc(t.categoria)}</span></td><td class="hide-s">${esc(t.quem)}</td><td class="v ${t.tipo==='entrada'?'in':'out'}">${t.tipo==='entrada'?'+':'−'} ${brl(t.valor)}</td></tr>`).join('')+'</tbody></table>'
+    : '<div class="empty">Nada lançado ainda. Envie uma notinha ou comprovante no chat. 📸</div>';
+}
+ir(mesAtual);
+</script>
+</body>
+</html>
