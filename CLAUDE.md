@@ -19,9 +19,16 @@ Várias notas na mesma mensagem: lançar todas. Nota com vários itens: lançar 
 
 ## Categorias
 Entradas: Salário, Freelance, Reembolso, Outros
-Saídas: Mercado, Alimentação, Transporte, Moradia, Contas, Saúde, Educação, Lazer, Compras, Outros
+Saídas: Mercado, Alimentação, Transporte, Moradia, Contas, Saúde, Educação, Lazer, Compras, Filhos, Contribuição, Reserva, Investimento, Outros
+(Reserva e Investimento = dinheiro guardado, lançado como saída para o saldo do mês fechar.)
 
 Campo `quem` é opcional (quem recebeu/gastou), útil para o casal/família.
+
+## Planejamento
+`data/orcamento.js` guarda o plano mensal: entradas previstas (com dia) e limite por categoria.
+O painel compara planejado × gasto e avisa quando passa do limite. Ao lançar uma entrada, a descrição
+deve conter o nome da fonte (ex.: "Salário 07/10", "Edrios", "Tráfego semana 1") para contar como recebida.
+Ao lançar, avisar se a categoria passou do limite do mês.
 
 ## Painel
 `index.html` lê `data/transacoes.js` e não precisa de build. Abrir direto no navegador

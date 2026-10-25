@@ -31,11 +31,20 @@ th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left}
 th{color:var(--mute);font-weight:500;font-size:.8rem}
 td.v{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .tag{background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:1px 9px;font-size:.78rem;color:var(--mute)}
+.plan{display:grid;grid-template-columns:150px 1fr 190px;gap:10px;align-items:center;margin:9px 0;font-size:.92rem}
+.plan .bar i{background:var(--in)}.plan .bar i.warn{background:#d9a21b}.plan .bar i.over{background:var(--out)}
+.plan small{display:block;color:var(--mute);font-size:.75rem}
+.plan .n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.alert{border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:.92rem;border:1px solid}
+.alert.ok{background:color-mix(in srgb,var(--in) 12%,transparent);border-color:var(--in)}
+.alert.bad{background:color-mix(in srgb,var(--out) 12%,transparent);border-color:var(--out)}
+.ag{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:.92rem}
+.ag .ok{color:var(--in)}.ag .pend{color:var(--mute)}
 .empty{color:var(--mute);text-align:center;padding:18px 0}
 .filters{display:flex;gap:6px;margin-bottom:10px}
 .filters button{border:1px solid var(--line);background:none;color:var(--mute);border-radius:20px;padding:3px 12px;cursor:pointer;font-size:.85rem}
 .filters button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-@media(max-width:560px){.cards{grid-template-columns:1fr}.row{grid-template-columns:90px 1fr 80px}.hide-s{display:none}}
+@media(max-width:560px){.cards{grid-template-columns:1fr}.plan{grid-template-columns:1fr 1fr}.plan .bar{grid-column:1/-1;order:3}.row{grid-template-columns:90px 1fr 80px}.hide-s{display:none}}
 </style>
 </head>
 <body>
@@ -49,6 +58,9 @@ td.v{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     <div class="card"><small>Saídas</small><b class="out" id="tout"></b></div>
     <div class="card"><small>Saldo do mês</small><b id="tsaldo"></b></div>
   </div>
+  <div id="alerta"></div>
+  <section><h2>Planejado × gasto <small style="color:var(--mute);font-weight:400">(limite de cada categoria no mês)</small></h2><div id="plano"></div></section>
+  <section><h2>Entradas previstas</h2><div id="agenda"></div></section>
   <section><h2>Gastos por categoria</h2><div id="cats"></div></section>
   <section>
     <h2>Lançamentos</h2>
@@ -57,8 +69,10 @@ td.v{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   </section>
 </main>
 <script src="data/transacoes.js"></script>
+<script src="data/orcamento.js"></script>
 <script>
 const T = window.TRANSACOES || [];
+const O = window.ORCAMENTO || {entradas:[],saidas:[]};
 const brl = n => n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -79,6 +93,35 @@ function render(){
   const ent = soma('entrada'), sai = soma('saida'), saldo = ent-sai;
   $('tin').textContent = brl(ent); $('tout').textContent = brl(sai);
   $('tsaldo').textContent = brl(saldo); $('tsaldo').className = saldo>=0?'in':'out';
+
+  // --- planejamento ---
+  const planoTot = O.saidas.reduce((s,p)=>s+p.limite,0);
+  const prevTot = O.entradas.reduce((s,e)=>s+e.parcelas.reduce((a,p)=>a+p.valor,0),0);
+  const gasto = c => doMes.filter(t=>t.tipo==='saida'&&t.categoria===c).reduce((s,t)=>s+t.valor,0);
+  const conhecidas = O.saidas.map(p=>p.categoria);
+  const extras = [...new Set(doMes.filter(t=>t.tipo==='saida'&&!conhecidas.includes(t.categoria)).map(t=>t.categoria))];
+  const linhas = [...O.saidas, ...extras.map(c=>({categoria:c,limite:0,itens:'Sem limite planejado'}))];
+  const estourou = [];
+  $('plano').innerHTML = linhas.map(p=>{
+    const g = gasto(p.categoria), pct = p.limite ? g/p.limite*100 : (g?100:0), resto = p.limite-g;
+    const cls = pct>100?'over':pct>=80?'warn':'';
+    if(pct>100 && !p.guardar) estourou.push(`${p.categoria} (+${brl(-resto)})`);
+    return `<div class="plan"><span>${esc(p.categoria)}<small>${esc(p.itens)}</small></span><div class="bar"><i class="${cls}" style="width:${Math.min(pct,100)}%"></i></div><span class="n">${brl(g)} / ${brl(p.limite)}<small>${p.guardar?(resto>0?'falta guardar ':'guardado ')+brl(Math.abs(resto)):resto>=0?'resta '+brl(resto):'estourou '+brl(-resto)}</small></span></div>`;
+  }).join('') + `<div class="plan" style="border-top:1px solid var(--line);padding-top:10px"><b>Total</b><span></span><span class="n"><b>${brl(sai)} / ${brl(planoTot)}</b><small>sobra planejada ${brl(prevTot-planoTot)}</small></span></div>`;
+
+  const recebido = e => doMes.filter(t=>t.tipo==='entrada'&&t.descricao.toLowerCase().includes(e.chave.toLowerCase())).reduce((s,t)=>s+t.valor,0);
+  $('agenda').innerHTML = O.entradas.map(e=>{
+    const prev = e.parcelas.reduce((a,p)=>a+p.valor,0), rec = recebido(e);
+    const quando = e.semanal ? 'toda semana' : e.parcelas.map(p=>'dia '+p.dia).join(' e ');
+    return `<div class="ag"><span>${esc(e.nome)} <span class="tag">${quando}</span></span><span class="${rec>=prev?'ok':'pend'}">${rec>=prev?'✓ ':''}${brl(rec)} / ${brl(prev)}</span></div>`;
+  }).join('') + `<div class="ag"><b>Total</b><b>${brl(ent)} / ${brl(prevTot)}</b></div>`;
+
+  let msgs = [];
+  if(sai>ent && ent>0) msgs.push(`Você gastou ${brl(sai-ent)} a mais do que recebeu até agora.`);
+  if(estourou.length) msgs.push('Passou do limite: '+estourou.join(', ')+'.');
+  const gastoSemGuardar = doMes.filter(t=>t.tipo==='saida'&&!(O.saidas.find(p=>p.categoria===t.categoria)||{}).guardar).reduce((s,t)=>s+t.valor,0);
+  $('alerta').innerHTML = msgs.length ? `<div class="alert bad">⚠️ ${msgs.join(' ')}</div>`
+    : `<div class="alert ok">✅ Dentro do plano. Gastos do dia a dia: ${brl(gastoSemGuardar)} de ${brl(O.saidas.filter(p=>!p.guardar).reduce((s,p)=>s+p.limite,0))}.</div>`;
 
   const por = {};
   doMes.filter(t=>t.tipo==='saida').forEach(t=>por[t.categoria]=(por[t.categoria]||0)+t.valor);
